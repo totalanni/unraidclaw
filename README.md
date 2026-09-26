@@ -199,11 +199,18 @@ REST authentication uses the `x-api-key: <api-key>` header. `/api/health` is pub
   "restart": "unless-stopped",
   "network": "bridge",
   "icon": "https://example.com/icon.png",
-  "webui": "http://[IP]:[PORT:3456]/"
+  "webui": "http://[IP]:[PORT:3456]/",
+  "extraArgs": "--gpus all",
+  "staticIp": "192.168.2.50"
 }
 ```
 
 Only `image` is required. The container is started immediately and an Unraid dockerMan XML template is created so it appears in the Docker tab.
+
+Two optional fields add capability beyond the basic fields:
+
+- **`extraArgs`** — free-form docker CLI arguments, space separated, passed straight to docker. Use this for GPU access (`--gpus all`), capabilities (`--cap-add=SYS_ADMIN`), resource limits (`--memory=8g --cpus=2`), devices, etc. Only letters/digits/`:.,/+=_-` and spaces are accepted (no shell metacharacters); the value is tokenized on spaces and passed to `docker` via `execFile`, never a shell, so it cannot be used for command injection. Invalid values return `400` before any docker call.
+- **`staticIp`** — a static IPv4 address for the container. It is written to the Unraid template's `<MyIP>` field and passed to docker as `--ip`, so the container keeps a fixed address and is reachable at that IP on the chosen network. Must be a valid IPv4; invalid values return `400`.
 
 ### Community Applications
 

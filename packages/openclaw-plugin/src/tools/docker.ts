@@ -119,7 +119,7 @@ export function registerDockerTools(api: any, getClient: ClientResolver): void {
   api.registerTool({
     name: "unraid_docker_create",
     description:
-      "Create and start a new Docker container on the Unraid server. Specify image, optional name, port mappings, volume mounts, environment variables, restart policy, and network.",
+      "Create and start a new Docker container on the Unraid server. Specify image, optional name, port mappings, volume mounts, environment variables, restart policy, network, extra docker arguments (e.g. '--gpus all'), and an optional static IP.",
     parameters: {
       type: "object",
       properties: {
@@ -146,6 +146,15 @@ export function registerDockerTools(api: any, getClient: ClientResolver): void {
           description: "Restart policy (default: unless-stopped)",
         },
         network: { type: "string", description: "Network to attach the container to" },
+        extraArgs: {
+          type: "string",
+          description:
+            "Extra docker CLI arguments, space separated (e.g. '--gpus all' or '--cap-add=SYS_ADMIN --memory=8g'). Passed straight to docker; only letters/digits/:.,/+=_- and spaces are allowed.",
+        },
+        staticIp: {
+          type: "string",
+          description: "Static IPv4 address for the container (Unraid MyIP; also passed as docker --ip). e.g. '192.168.1.50'",
+        },
         server: { type: "string", description: "Target server name (optional, uses default server)" },
       },
       required: ["image"],

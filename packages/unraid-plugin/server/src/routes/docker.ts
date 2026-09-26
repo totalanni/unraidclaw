@@ -15,6 +15,8 @@ import {
   VALID_NETWORK_RE,
   VALID_NAME_RE,
   VALID_RESTART_VALUES,
+  VALID_EXTRA_ARGS_RE,
+  VALID_IP_RE,
 } from "../docker-common.js";
 
 interface DockerCreateBody {
@@ -28,6 +30,8 @@ interface DockerCreateBody {
   labels?: Record<string, string>;
   icon?: string;
   webui?: string;
+  extraArgs?: string;
+  staticIp?: string;
 }
 
 const LIST_QUERY = `query {
@@ -210,9 +214,9 @@ export function registerDockerRoutes(app: FastifyInstance, gql: GraphQLClient, o
     preHandler: requirePermission(Resource.DOCKER, Action.CREATE),
     handler: async (req, reply) => {
       const body = req.body;
-      if (!validBody(body, ["image", "name", "ports", "volumes", "env", "restart", "network", "labels", "icon", "webui"])
+      if (!validBody(body, ["image", "name", "ports", "volumes", "env", "restart", "network", "labels", "icon", "webui", "extraArgs", "staticIp"])
         || typeof body.image !== "string"
-        || ["name", "restart", "network", "icon", "webui"].some((key) => body[key] !== undefined && typeof body[key] !== "string")
+        || ["name", "restart", "network", "icon", "webui", "extraArgs", "staticIp"].some((key) => body[key] !== undefined && typeof body[key] !== "string")
         || ["ports", "volumes", "env"].some((key) => body[key] !== undefined && (!Array.isArray(body[key]) || !(body[key] as unknown[]).every((v) => typeof v === "string")))
         || (body.labels !== undefined && (!validBody(body.labels, Object.keys(body.labels ?? {})) || Object.entries(body.labels).some(([key, value]) => !/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,254}$/.test(key) || typeof value !== "string")))) {
         return reply.status(400).send({ ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid container fields or types" } });
@@ -228,6 +232,8 @@ export function registerDockerRoutes(app: FastifyInstance, gql: GraphQLClient, o
         labels = {},
         icon,
         webui,
+        extraArgs,
+        staticIp,
       } = req.body;
 
       // Validate inputs
@@ -242,6 +248,12 @@ export function registerDockerRoutes(app: FastifyInstance, gql: GraphQLClient, o
       }
       if (!VALID_NETWORK_RE.test(network)) {
         return reply.status(400).send({ ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid network name" } });
+      }
+      if (extraArgs !== undefined && !VALID_EXTRA_ARGS_RE.test(extraArgs)) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid extraArgs (allowed characters: letters, digits, : . , / + = _ -, and spaces between tokens)" } });
+      }
+      if (staticIp !== undefined && !VALID_IP_RE.test(staticIp)) {
+        return reply.status(400).send({ ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid staticIp (expected an IPv4 address)" } });
       }
       for (const p of ports) {
         if (!VALID_PORT_RE.test(p)) {
@@ -268,6 +280,17 @@ export function registerDockerRoutes(app: FastifyInstance, gql: GraphQLClient, o
       for (const p of ports) args.push("-p", p);
       for (const v of volumes) args.push("-v", v);
       for (const e of env) args.push("-e", e);
+
+      // Free-form docker args (e.g. "--gpus all"). Tokenized on spaces; each
+      // token was already validated against VALID_EXTRA_ARGS_RE, and execFile
+      // passes them straight to docker without a shell.
+      if (extraArgs) {
+        for (const token of extraArgs.split(" ")) {
+          args.push(token);
+        }
+      }
+      // Static IP (Unraid <MyIP> + docker --ip).
+      if (staticIp) args.push("--ip", staticIp);
 
       // Add Unraid managed labels so container appears as first-class citizen in UI
       const allLabels: Record<string, string> = {
@@ -329,7 +352,7 @@ export function registerDockerRoutes(app: FastifyInstance, gql: GraphQLClient, o
   <Repository>${escapeXml(image)}</Repository>
   <Registry>${escapeXml(registry)}</Registry>
   <Network>${escapeXml(network)}</Network>
-  <MyIP/>
+  <MyIP>${escapeXml(staticIp ?? "")}</MyIP>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
   <Support/>
@@ -339,7 +362,7 @@ export function registerDockerRoutes(app: FastifyInstance, gql: GraphQLClient, o
   <WebUI>${escapeXml(webui ?? "")}</WebUI>
   <TemplateURL/>
   <Icon>${escapeXml(icon ?? "")}</Icon>
-  <ExtraParams/>
+  <ExtraParams>${escapeXml(extraArgs ?? "")}</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled>${dateInstalled}</DateInstalled>

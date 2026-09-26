@@ -128,9 +128,14 @@ test("docker create rejects wrong types, labels and traversal before mkdir", asy
   registerDockerRoutes(app, graphql(), { run: runner.run, mkdir: async () => { throw new Error("Unexpected mkdir"); } });
   for (const payload of [[], { image: "alpine", extra: 1 }, { image: 4 },
     ...["ports", "volumes", "env"].flatMap((key) => [{ image: "alpine", [key]: "x" }, { image: "alpine", [key]: [3] }]),
-    ...["name", "restart", "network", "icon", "webui"].map((key) => ({ image: "alpine", [key]: 1 })),
+    ...["name", "restart", "network", "icon", "webui", "extraArgs", "staticIp"].map((key) => ({ image: "alpine", [key]: 1 })),
     ...[[], null, { x: 2 }, { "x=y": "z" }, { "-x": "y" }].map((labels) => ({ image: "alpine", labels })),
     { image: "alpine", volumes: ["/mnt/../../tmp/escape:/data"] },
+    { image: "alpine", extraArgs: "--gpus all;rm -rf /" },
+    { image: "alpine", extraArgs: "--gpus `id`" },
+    { image: "alpine", extraArgs: "--gpus all && curl evil" },
+    { image: "alpine", staticIp: "not-an-ip" },
+    { image: "alpine", staticIp: "999.999.999.999" },
   ]) assert.equal((await app.inject({ method: "POST", url: "/api/docker/containers", payload })).statusCode, 400, JSON.stringify(payload));
   assert.equal(runner.calls.length, 0);
 });
@@ -210,6 +215,23 @@ test("docker create verifies running state and writes only the injected template
   assert.equal(exited.json().data.state, "exited");
   // The container exists, so its template is still saved for the Docker tab.
   assert.match(await readFile(join(dir, "my-app.xml"), "utf8"), /<Name>app<\/Name>/);
+});
+test("docker create passes extraArgs and staticIp to docker run and into the template", async (t) => {
+  const dir = await mkdtemp(join(root, "templates-extra-")); const app = Fastify(); t.after(() => app.close());
+  let state = "running";
+  const runner = recorder((args) => args[0] === "run" ? "abcdef" : JSON.stringify([{ Id: "abcdef", Name: "/app", Config: { Image: "alpine" }, State: { Status: state } }]));
+  registerDockerRoutes(app, graphql(), { run: runner.run, templatesDir: dir, mkdir: (async () => {}) as typeof mkdir });
+  const payload = { image: "alpine", name: "gpu-app", extraArgs: "--gpus all", staticIp: "192.168.2.50" };
+  const res = await app.inject({ method: "POST", url: "/api/docker/containers", payload });
+  assert.equal(res.json().data.verified, true);
+  const runArgs = runner.calls.find((c) => c.args[0] === "run")?.args ?? [];
+  // --gpus all is tokenized; --ip staticIp is appended.
+  assert.ok(runArgs.includes("--gpus") && runArgs.includes("all"));
+  const ipIdx = runArgs.indexOf("--ip");
+  assert.ok(ipIdx !== -1 && runArgs[ipIdx + 1] === "192.168.2.50");
+  const xml = await readFile(join(dir, "my-gpu-app.xml"), "utf8");
+  assert.match(xml, /<ExtraParams>--gpus all<\/ExtraParams>/);
+  assert.match(xml, /<MyIP>192.168\.2\.50<\/MyIP>/);
 });
 test("docker create reports docker's stderr without the command line or environment values", async (t) => {
   const dir = await mkdtemp(join(root, "templates-")); const app = Fastify(); t.after(() => app.close());

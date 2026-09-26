@@ -37,6 +37,15 @@ Remove deletes the container only. Appdata, Docker volumes, the image and the sa
 
 Both take `dryRun: true`. Use it first for a removal, and read the result back to the user before doing it for real.
 
+## Creating a container
+
+`unraid_docker_create` takes `image` plus optional `name`, `ports`, `volumes`, `env`, `restart` and `network`. Two extra fields cover what those do not:
+
+- `extraArgs` is a space separated string of docker CLI flags passed straight to docker. Use it for GPU access (`--gpus all`), capabilities (`--cap-add=SYS_ADMIN`), resource limits (`--memory=8g`), and device paths (`--device /dev/nvidia0:/dev/nvidia0`). Only letters, digits, `:`, `.`, `,`, `/`, `+`, `=`, `_`, `-` and spaces are accepted, and the value is handed to docker through execFile, not a shell, so it cannot run a command.
+- `staticIp` is a static IPv4 address for the container, written to the Unraid MyIP field and passed to docker as `--ip`.
+
+Both are validated before the docker call, so a malformed value is rejected with a 400 and no container is created.
+
 ## Plugins
 
 Unraid plugins are .plg files that install files and run scripts on the server itself. They are not Docker containers. Some are listed in Community Applications, but these tools manage them directly without CA. Someone asking to install an app almost always means a container, so reach for `unraid_ca_install`. Use `unraid_plugin_install` only when they give you a .plg URL or name a plugin such as Unassigned Devices.

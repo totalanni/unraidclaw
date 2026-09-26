@@ -39,6 +39,14 @@ export const VALID_NETWORK_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 export const VALID_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 export const VALID_RESTART_VALUES = new Set(["no", "always", "unless-stopped", "on-failure"]);
 
+// Free-form docker CLI arguments (e.g. "--gpus all", "--cap-add=SYS_ADMIN").
+// Passed directly to docker via execFile (no shell), so only docker arg syntax
+// matters. Allow a conservative character set so a value cannot smuggle in a
+// token docker would mis-parse or a path traversal; spaces separate tokens.
+export const VALID_EXTRA_ARGS_RE = /^[a-zA-Z0-9:.,/+=_-]+( [a-zA-Z0-9:.,/+=_-]+)*$/;
+// Static IP for the container (Unraid <MyIP> field + docker --ip).
+export const VALID_IP_RE = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+
 export function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9_.-]/g, "_");
 }
